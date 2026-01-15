@@ -1241,11 +1241,13 @@ export class ModernHtmlExporter {
         }
 
         if (src) {
-            // AMR格式浏览器可能不支持，同时提供下载链接
+            // AMR格式浏览器可能不支持，需要用 silk-wasm 解码
             const isAmr = src.toLowerCase().endsWith('.amr');
-            const audioTag = `<audio src="${src}" controls class="message-audio" preload="metadata">[语音:${duration}秒]</audio>`;
+            // 为 AMR 文件添加 data-silk 属性，用于后续的 Silk V3 解码
+            const silkAttr = isAmr ? ' data-silk="true"' : '';
+            const audioTag = `<audio src="${src}" controls class="message-audio" preload="metadata"${silkAttr}>[语音:${duration}秒]</audio>`;
             const downloadLink = isAmr
-                ? `<a href="${src}" download="${this.escapeHtml(filename)}" class="audio-download-link" title="浏览器可能不支持AMR格式，点击下载">下载语音</a>`
+                ? `<a href="${src}" download="${this.escapeHtml(filename)}" class="audio-download-link" title="Silk V3 格式，将自动解码播放">下载原始文件</a>`
                 : '';
 
             return `<div class="audio-wrapper">${audioTag}${downloadLink}</div>`;

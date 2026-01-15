@@ -2054,6 +2054,131 @@ export const MODERN_SINGLE_APP_JS = `
                 filterMessages();
             }, 100);
         });
+
+        // ========== Silk V3 Audio Player ==========
+        (async function initSilkAudioPlayer() {
+            // 查找所有带 data-silk 属性的音频元素
+            const silkAudios = document.querySelectorAll('audio[data-silk="true"]');
+            if (silkAudios.length === 0) return;
+
+            console.log('[QCE] Found ' + silkAudios.length + ' Silk audio files, initializing decoder...');
+
+            try {
+                // 动态导入 silk-wasm
+                const silkModule = await import('https://cdn.jsdelivr.net/npm/silk-wasm@3.7.1/lib/index.mjs');
+
+                // 处理每个 Silk 音频
+                for (let i = 0; i < silkAudios.length; i++) {
+                    const audioEl = silkAudios[i];
+                    const originalSrc = audioEl.src || audioEl.getAttribute('src');
+                    if (!originalSrc) continue;
+
+                    try {
+                        // 显示加载状态
+                        const wrapper = audioEl.closest('.audio-wrapper');
+                        if (wrapper) {
+                            const statusEl = document.createElement('span');
+                            statusEl.className = 'audio-loading-status';
+                            statusEl.textContent = '正在解码...';
+                            statusEl.style.cssText = 'font-size: 12px; color: var(--text-secondary); margin-left: 8px;';
+                            wrapper.appendChild(statusEl);
+
+                            // 下载并解码 Silk 文件
+                            const response = await fetch(originalSrc);
+                            const silkData = await response.arrayBuffer();
+
+                            // 检查是否是 Silk V3 格式
+                            const uint8Array = new Uint8Array(silkData);
+                            const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33];
+                            let isSilk = true;
+                            if (uint8Array.length < silkHeader.length) {
+                                isSilk = false;
+                            } else {
+                                for (let j = 0; j < silkHeader.length; j++) {
+                                    if (uint8Array[j] !== silkHeader[j]) {
+                                        isSilk = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!isSilk) {
+                                statusEl.textContent = '格式错误';
+                                statusEl.style.color = 'red';
+                                continue;
+                            }
+
+                            // 解码为 PCM
+                            const pcmData = await silkModule.decode(uint8Array, 24000);
+
+                            // 转换为 WAV
+                            const wavBlob = pcmToWav(pcmData, 24000);
+                            const wavUrl = URL.createObjectURL(wavBlob);
+
+                            // 更新音频源
+                            audioEl.src = wavUrl;
+                            audioEl.removeAttribute('data-silk');
+
+                            // 更新状态
+                            statusEl.textContent = '✓ 已解码';
+                            statusEl.style.color = 'var(--text-secondary)';
+
+                            // 清理旧的 blob URL
+                            audioEl.addEventListener('emptied', function() {
+                                URL.revokeObjectURL(wavUrl);
+                            }, { once: true });
+                        }
+                    } catch (err) {
+                        console.warn('[QCE] Failed to decode audio:', originalSrc, err);
+                        const wrapper = audioEl.closest('.audio-wrapper');
+                        if (wrapper) {
+                            const statusEl = wrapper.querySelector('.audio-loading-status');
+                            if (statusEl) {
+                                statusEl.textContent = '解码失败';
+                                statusEl.style.color = 'red';
+                            }
+                        }
+                    }
+                }
+
+                console.log('[QCE] Silk audio decoding completed');
+            } catch (error) {
+                console.warn('[QCE] Failed to initialize Silk decoder:', error);
+            }
+        })();
+
+        // 将 PCM 数据转换为 WAV 格式
+        function pcmToWav(pcmData, sampleRate) {
+            const pcm16 = new Int16Array(pcmData.buffer || pcmData);
+            const wavBuffer = new ArrayBuffer(44 + pcm16.length * 2);
+            const view = new DataView(wavBuffer);
+
+            // WAV 文件头
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + pcm16.length * 2, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, pcm16.length * 2, true);
+
+            const pcmView = new Int16Array(wavBuffer, 44);
+            pcmView.set(pcm16);
+
+            return new Blob([wavBuffer], { type: 'audio/wav' });
+        }
 `;
 
 /** 单文件 HTML 中的 scripts（保持原结构：lucide CDN + 内联脚本） */

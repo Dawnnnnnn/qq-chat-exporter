@@ -49,17 +49,31 @@ class SilkDecoder {
         // Silk V3 文件头标识：#!SILK_V3
         const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33];
 
-        if (uint8Array.length < silkHeader.length) {
-            return false;
-        }
-
-        for (let i = 0; i < silkHeader.length; i++) {
-            if (uint8Array[i] !== silkHeader[i]) {
-                return false;
+        // 检查标准格式 (从字节 0 开始)
+        if (uint8Array.length >= silkHeader.length) {
+            let matchStandard = true;
+            for (let i = 0; i < silkHeader.length; i++) {
+                if (uint8Array[i] !== silkHeader[i]) {
+                    matchStandard = false;
+                    break;
+                }
+            }
+            if (matchStandard) {
+                return true;
             }
         }
 
-        return true;
+        // 检查 QQ 格式 (从字节 1 开始,第 0 字节是 0x02)
+        if (uint8Array.length >= silkHeader.length + 1 && uint8Array[0] === 0x02) {
+            for (let i = 0; i < silkHeader.length; i++) {
+                if (uint8Array[i + 1] !== silkHeader[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -77,7 +91,13 @@ class SilkDecoder {
         try {
             // silk-wasm@3.7.1 API: decode(input, sampleRate)
             // input: Uint8Array, sampleRate: 目标采样率(可选)
-            const uint8Data = new Uint8Array(silkData);
+            let uint8Data = new Uint8Array(silkData);
+
+            // 如果是 QQ 格式 (第 0 字节是 0x02),跳过第一个字节
+            if (uint8Data.length > 0 && uint8Data[0] === 0x02) {
+                uint8Data = uint8Data.slice(1);
+            }
+
             const pcmData = await this.wasmModule.decode(uint8Data, 24000);
 
             return {

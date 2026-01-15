@@ -2088,17 +2088,41 @@ export const MODERN_SINGLE_APP_JS = `
                             const silkData = await response.arrayBuffer();
 
                             // 检查是否是 Silk V3 格式
+                            // QQ 导出的 Silk 文件有两种格式:
+                            // 1. 标准格式: #!SILK_V3 (从字节 0 开始)
+                            // 2. QQ 格式: \x02#!SILK_V3 (从字节 1 开始)
                             const uint8Array = new Uint8Array(silkData);
-                            const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33];
-                            let isSilk = true;
-                            if (uint8Array.length < silkHeader.length) {
-                                isSilk = false;
-                            } else {
+                            const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33]; // #!SILK_V3
+                            let isSilk = false;
+                            let silkDataToEncode = uint8Array;
+
+                            // 检查标准格式 (从字节 0 开始)
+                            if (uint8Array.length >= silkHeader.length) {
+                                let matchStandard = true;
                                 for (let j = 0; j < silkHeader.length; j++) {
                                     if (uint8Array[j] !== silkHeader[j]) {
-                                        isSilk = false;
+                                        matchStandard = false;
                                         break;
                                     }
+                                }
+                                if (matchStandard) {
+                                    isSilk = true;
+                                }
+                            }
+
+                            // 检查 QQ 格式 (从字节 1 开始,第 0 字节是 0x02)
+                            if (!isSilk && uint8Array.length >= silkHeader.length + 1 && uint8Array[0] === 0x02) {
+                                let matchQQ = true;
+                                for (let j = 0; j < silkHeader.length; j++) {
+                                    if (uint8Array[j + 1] !== silkHeader[j]) {
+                                        matchQQ = false;
+                                        break;
+                                    }
+                                }
+                                if (matchQQ) {
+                                    isSilk = true;
+                                    // 跳过第一个字节 (0x02),从第二个字节开始解码
+                                    silkDataToEncode = uint8Array.slice(1);
                                 }
                             }
 
@@ -2109,7 +2133,7 @@ export const MODERN_SINGLE_APP_JS = `
                             }
 
                             // 解码为 PCM
-                            const pcmData = await silkModule.decode(uint8Array, 24000);
+                            const pcmData = await silkModule.decode(silkDataToEncode, 24000);
 
                             // 转换为 WAV
                             const wavBlob = pcmToWav(pcmData, 24000);
@@ -2492,17 +2516,41 @@ export const MODERN_CHUNKED_APP_JS = `/*!
             const silkData = await response.arrayBuffer();
 
             // 检查是否是 Silk V3 格式
+            // QQ 导出的 Silk 文件有两种格式:
+            // 1. 标准格式: #!SILK_V3 (从字节 0 开始)
+            // 2. QQ 格式: \x02#!SILK_V3 (从字节 1 开始)
             const uint8Array = new Uint8Array(silkData);
-            const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33];
-            let isSilk = true;
-            if (uint8Array.length < silkHeader.length) {
-              isSilk = false;
-            } else {
+            const silkHeader = [0x23, 0x21, 0x53, 0x49, 0x4c, 0x4b, 0x5f, 0x56, 0x33]; // #!SILK_V3
+            let isSilk = false;
+            let silkDataToEncode = uint8Array;
+
+            // 检查标准格式 (从字节 0 开始)
+            if (uint8Array.length >= silkHeader.length) {
+              let matchStandard = true;
               for (let j = 0; j < silkHeader.length; j++) {
                 if (uint8Array[j] !== silkHeader[j]) {
-                  isSilk = false;
+                  matchStandard = false;
                   break;
                 }
+              }
+              if (matchStandard) {
+                isSilk = true;
+              }
+            }
+
+            // 检查 QQ 格式 (从字节 1 开始,第 0 字节是 0x02)
+            if (!isSilk && uint8Array.length >= silkHeader.length + 1 && uint8Array[0] === 0x02) {
+              let matchQQ = true;
+              for (let j = 0; j < silkHeader.length; j++) {
+                if (uint8Array[j + 1] !== silkHeader[j]) {
+                  matchQQ = false;
+                  break;
+                }
+              }
+              if (matchQQ) {
+                isSilk = true;
+                // 跳过第一个字节 (0x02),从第二个字节开始解码
+                silkDataToEncode = uint8Array.slice(1);
               }
             }
 
@@ -2513,7 +2561,7 @@ export const MODERN_CHUNKED_APP_JS = `/*!
             }
 
             // 解码为 PCM
-            const pcmData = await silkModule.decode(uint8Array, 24000);
+            const pcmData = await silkModule.decode(silkDataToEncode, 24000);
 
             // 转换为 WAV
             const wavBlob = pcmToWav(pcmData, 24000);
